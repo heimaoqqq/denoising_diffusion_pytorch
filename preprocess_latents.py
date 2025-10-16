@@ -207,7 +207,7 @@ def main():
                         default='/kaggle/input/kl-vae/kl_vae_best.pt',
                         help='VAE权重路径')
     parser.add_argument('--data_path', type=str,
-                        default='/kaggle/input/organized-gait-dataset/Normal_line',
+                        default='/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_line',
                         help='数据集路径')
     parser.add_argument('--output_folder', type=str,
                         default='./latents_cache',
