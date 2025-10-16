@@ -204,7 +204,7 @@ def main():
     
     # 路径参数
     parser.add_argument('--vae_path', type=str,
-                        default='/kaggle/input/kl-vae-best-pt/kl_vae_best.pt',
+                        default='/kaggle/input/kl-vae/kl_vae_best.pt',
                         help='VAE权重路径')
     parser.add_argument('--data_path', type=str,
                         default='/kaggle/input/organized-gait-dataset/Normal_line',
