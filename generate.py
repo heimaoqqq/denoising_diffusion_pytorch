@@ -301,8 +301,7 @@ def main():
         utils.save_image(
             all_generated,
             str(grid_path),
-            nrow=samples_per_user,
-            normalize=False
+            nrow=samples_per_user
         )
         print(f"Saved grid to {grid_path}")
     
@@ -316,7 +315,12 @@ def main():
             sample_counts[user_id] = 0
         
         save_path = output_dir / f'user_{user_id:02d}_sample_{sample_counts[user_id]:03d}.png'
-        utils.save_image(img, str(save_path), normalize=False)
+        # 确保img有正确的维度 [1, 3, 256, 256]
+        if img.dim() == 3:  # [3, 256, 256] -> [1, 3, 256, 256]
+            img_to_save = img.unsqueeze(0)
+        else:
+            img_to_save = img
+        utils.save_image(img_to_save, str(save_path), nrow=1)
         sample_counts[user_id] += 1
     
     print(f"✓ Saved {len(all_generated)} individual images to {output_dir}")
