@@ -243,7 +243,7 @@ def main():
     # 其他
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device to use (cuda/cpu)')
-    parser.add_argument('--batch_size', type=int, default=16,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='Batch size for generation')
     parser.add_argument('--save_grid', action='store_true',
                         help='Save as grid instead of individual images (default: save individual images)')
