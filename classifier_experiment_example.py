@@ -452,6 +452,42 @@ def main():
     print("\n评估分类器...")
     accuracy = evaluate_classifier(model, test_loader, device, visualize=True)
     
+    # 保存训练好的模型
+    model_save_dir = Path("./trained_models")
+    model_save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 根据是否使用合成数据生成不同的文件名
+    if args.synthetic_folder:
+        model_name = f"classifier_real_synthetic_acc{accuracy:.2f}_seed{args.seed}.pth"
+        print(f"\n💾 保存增强模型: {model_name}")
+    else:
+        model_name = f"classifier_real_only_acc{accuracy:.2f}_seed{args.seed}.pth"
+        print(f"\n💾 保存基线模型: {model_name}")
+    
+    model_save_path = model_save_dir / model_name
+    
+    # 保存完整的checkpoint信息
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'accuracy': accuracy,
+        'args': vars(args),
+        'epoch': args.epochs,
+        'model_info': {
+            'architecture': 'ResNet18',
+            'num_classes': 31,
+            'input_size': (256, 256, 3),
+            'data_type': 'real+synthetic' if args.synthetic_folder else 'real_only'
+        }
+    }
+    
+    torch.save(checkpoint, model_save_path)
+    print(f"   模型已保存至: {model_save_path}")
+    print(f"   测试准确率: {accuracy:.2f}%")
+    if args.synthetic_folder:
+        print(f"   数据类型: 真实图像 + 合成图像")
+    else:
+        print(f"   数据类型: 仅真实图像")
+    
     print(f"\n🏆 训练完成！最终测试准确率: {accuracy:.2f}%")
     
     return accuracy
