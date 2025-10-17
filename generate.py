@@ -232,7 +232,7 @@ def main():
     
     # 路径参数
     parser.add_argument('--vae_path', type=str,
-                        default='/kaggle/input/kl-vae/kl_vae_best.pt',
+                        default='/kaggle/input/kl-vae-best-pt/kl_vae_best.pt',
                         help='Path to VAE checkpoint')
     parser.add_argument('--output_dir', type=str, default='./generated',
                         help='Output directory for generated images')
@@ -243,7 +243,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=16,
                         help='Batch size for generation')
     parser.add_argument('--save_grid', action='store_true',
-                        help='Save as grid instead of individual images')
+                        help='Save as grid instead of individual images (default: save individual images)')
     
     args = parser.parse_args()
     
@@ -294,9 +294,9 @@ def main():
     all_generated = torch.cat(all_generated, dim=0)
     print(f"Generated {len(all_generated)} images")
     
-    # 保存图像
+    # 保存图像（默认保存为独立文件）
     if args.save_grid:
-        # 保存为网格
+        # 保存为网格（可选）
         grid_path = output_dir / f'generated_grid_scale{args.cond_scale}.png'
         utils.save_image(
             all_generated,
@@ -305,12 +305,22 @@ def main():
             normalize=False
         )
         print(f"Saved grid to {grid_path}")
-    else:
-        # 保存为单独文件
-        for idx, (img, user_id) in enumerate(zip(all_generated, all_user_ids)):
-            save_path = output_dir / f'user_{user_id:02d}_sample_{idx:03d}.png'
-            utils.save_image(img, str(save_path), normalize=False)
-        print(f"Saved {len(all_generated)} images to {output_dir}")
+    
+    # 总是保存独立图像文件
+    print("Saving individual images...")
+    sample_counts = {}  # 跟踪每个用户的样本计数
+    
+    for img, user_id in zip(all_generated, all_user_ids):
+        # 为每个用户维护独立的样本计数
+        if user_id not in sample_counts:
+            sample_counts[user_id] = 0
+        
+        save_path = output_dir / f'user_{user_id:02d}_sample_{sample_counts[user_id]:03d}.png'
+        utils.save_image(img, str(save_path), normalize=False)
+        sample_counts[user_id] += 1
+    
+    print(f"✓ Saved {len(all_generated)} individual images to {output_dir}")
+    print(f"✓ Generated samples for {len(sample_counts)} users")
     
     print("Generation complete!")
 
