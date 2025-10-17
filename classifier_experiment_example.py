@@ -32,6 +32,7 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
     
     # 早停参数
     best_train_loss = float('inf')
+    best_model_state = None  # 保存最佳模型状态
     patience_counter = 0
     early_stop_patience = 3  # 连续3个epoch训练loss不下降则停止
     
@@ -62,25 +63,29 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
                 'train_acc': f'{100.*correct/total:.2f}%'
             })
         
-        # 计算epoch平均loss和准确率
         avg_train_loss = total_loss / len(train_loader)
         train_acc = 100. * correct / total
         
         print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Train Acc = {train_acc:.2f}%")
         
-        # 基于训练loss的早停
+        # 早停和学习率调度
         if avg_train_loss < best_train_loss:
             best_train_loss = avg_train_loss
+            best_model_state = model.state_dict().copy()  # 保存最佳模型
             patience_counter = 0
-            print(f"  → 训练loss改善: {best_train_loss:.4f}")
+            print(f"  → 训练loss改善: {best_train_loss:.4f} (已保存模型)")
         else:
             patience_counter += 1
             print(f"  → 训练loss未改善 ({patience_counter}/{early_stop_patience})")
-            
+        
         # 早停检查
         if patience_counter >= early_stop_patience:
             print(f"\n训练loss连续 {early_stop_patience} epochs未改善，提前停止训练")
             print(f"最终训练loss: {best_train_loss:.4f}")
+            # 恢复到最佳模型状态
+            if best_model_state is not None:
+                model.load_state_dict(best_model_state)
+                print("已恢复到最佳训练loss对应的模型状态")
             break
             
         # 学习率调度（基于训练loss）
