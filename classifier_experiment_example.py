@@ -15,7 +15,7 @@ from PIL import Image
 from load_dataset import MicroDopplerDataset
 
 
-def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, test_loader=None):
+def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, test_loader=None, scheduler=None):
     """训练分类器"""
     best_test_acc = 0
     best_model_state = None
@@ -81,6 +81,10 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
                 best_test_acc = test_acc
                 best_model_state = model.state_dict().copy()
                 print(f"  → 新的最佳测试准确率: {best_test_acc:.2f}%")
+                
+            # 学习率调度
+            if scheduler:
+                scheduler.step(test_acc)
         else:
             print(f"Epoch {epoch+1}: Train Acc = {train_acc:.2f}%")
     
@@ -182,7 +186,7 @@ def main():
                         help='合成数据文件夹（可选，用于增强实验）')
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
     
@@ -241,11 +245,16 @@ def main():
     
     # 优化器和损失函数
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    
+    # 学习率调度器：在验证准确率停止提升时降低学习率
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=10, verbose=True
+    )
     
     # 训练
     print("\n开始训练...")
-    best_acc = train_classifier(model, train_loader, criterion, optimizer, device, args.epochs, test_loader)
+    best_acc = train_classifier(model, train_loader, criterion, optimizer, device, args.epochs, test_loader, scheduler)
     
     # 评估
     print("\n评估分类器...")
