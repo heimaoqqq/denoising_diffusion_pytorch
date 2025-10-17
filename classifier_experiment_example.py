@@ -35,11 +35,10 @@ def set_random_seed(seed=42):
     print(f"🎲 已设置随机种子: {seed} (结果可重现)")
 
 
-def train_classifier(model, train_loader, test_loader, criterion, optimizer, device, epochs=15, scheduler=None):
-    """训练分类器 - 基于测试准确率早停"""
+def train_classifier(model, train_loader, criterion, optimizer, device, epochs=15, scheduler=None):
+    """训练分类器 - 固定epoch数，训练完成后再测试"""
     
     print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
-    print(f"测试数据信息：{len(test_loader.dataset)} 张图像")
     
     # 检查第一个batch的图像尺寸
     for images, labels in train_loader:
@@ -47,13 +46,7 @@ def train_classifier(model, train_loader, test_loader, criterion, optimizer, dev
         print(f"图像数据类型: {images.dtype}, 值域: [{images.min():.3f}, {images.max():.3f}]")
         break
     
-    # 早停参数 - 基于测试准确率
-    best_test_acc = 0.0
-    best_model_state = None
-    patience_counter = 0
-    early_stop_patience = 3  # 连续3个epoch测试准确率不改善则停止
-    
-    print(f"开始训练，最多 {epochs} epochs，基于测试准确率早停（patience={early_stop_patience}）")
+    print(f"开始训练 {epochs} epochs（与文献一致）")
     
     for epoch in range(epochs):
         # 训练阶段
@@ -87,48 +80,11 @@ def train_classifier(model, train_loader, test_loader, criterion, optimizer, dev
         
         print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Train Acc = {train_acc:.2f}%")
         
-        # 每个epoch结束后进行测试
-        model.eval()
-        test_correct = 0
-        test_total = 0
-        
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                _, predicted = outputs.max(1)
-                test_total += labels.size(0)
-                test_correct += predicted.eq(labels).sum().item()
-        
-        test_acc = 100. * test_correct / test_total
-        print(f"         Test Acc = {test_acc:.2f}%")
-        
-        # 早停判断 - 基于测试准确率
-        if test_acc > best_test_acc:
-            best_test_acc = test_acc
-            best_model_state = model.state_dict().copy()  # 保存最佳模型
-            patience_counter = 0
-            print(f"  → 测试准确率改善: {best_test_acc:.2f}% (已保存模型)")
-        else:
-            patience_counter += 1
-            print(f"  → 测试准确率未改善 ({patience_counter}/{early_stop_patience})")
-        
-        # 早停检查
-        if patience_counter >= early_stop_patience:
-            print(f"\n测试准确率连续 {early_stop_patience} epochs未改善，提前停止训练")
-            print(f"最佳测试准确率: {best_test_acc:.2f}%")
-            # 恢复到最佳模型状态
-            if best_model_state is not None:
-                model.load_state_dict(best_model_state)
-                print("已恢复到最佳测试准确率对应的模型状态")
-            break
-        
         # 学习率调度（基于训练loss）
         if scheduler:
             scheduler.step(avg_train_loss)
     
-    print(f"训练完成，共进行 {epoch+1} epochs，最佳测试准确率: {best_test_acc:.2f}%")
-    return best_test_acc
+    print(f"训练完成，共进行 {epochs} epochs（与文献一致）")
 
 
 def extract_features(model, data_loader, device, max_samples=1000):
@@ -488,17 +444,21 @@ def main():
     
     # 训练
     print("\n开始训练...")
-    best_test_acc = train_classifier(
-        model, train_loader, test_loader, criterion, optimizer, device, args.epochs, scheduler
+    train_classifier(
+        model, train_loader, criterion, optimizer, device, args.epochs, scheduler
     )
     
-    print(f"\n🏆 训练完成！最佳测试准确率: {best_test_acc:.2f}%")
+    # 训练完成后进行测试
+    print("\n评估分类器...")
+    accuracy = evaluate_classifier(model, test_loader, device)
+    
+    print(f"\n🏆 训练完成！最终测试准确率: {accuracy:.2f}%")
     
     # 可选：生成t-SNE可视化
     print("\n生成t-SNE可视化...")
     visualize_tsne(model, test_loader, device)
     
-    return best_test_acc
+    return accuracy
 
 
 if __name__ == '__main__':
