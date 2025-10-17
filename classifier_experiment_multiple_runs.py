@@ -364,9 +364,9 @@ def run_single_experiment(data_root, split_file, synthetic_folder, batch_size, e
     model = resnet18(weights=None, num_classes=31)
     model = model.to(device)
     
-    # 优化器和损失函数
+    # 优化器和损失函数 - 与原论文一致，无正则化
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     # 学习率调度器
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
