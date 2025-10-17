@@ -326,7 +326,7 @@ def main():
     
     # 路径参数
     parser.add_argument('--model_path', type=str,
-                        default='/kaggle/input/model-73-pt/model-73.pt',
+                        default='/kaggle/working/denoising_diffusion_pytorch/trained_models/classifier_real_only_acc90.16_seed42.pth',
                         help='预训练分类器路径')
     parser.add_argument('--generated_folder', type=str,
                         default='/kaggle/input/generated',
