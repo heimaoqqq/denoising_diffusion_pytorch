@@ -11,6 +11,10 @@ from tqdm import tqdm
 import json
 from pathlib import Path
 from PIL import Image
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+import seaborn as sns
 
 from load_dataset import MicroDopplerDataset
 
@@ -86,8 +90,80 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
     print(f"训练完成，共进行 {epoch+1} epochs")
 
 
-def evaluate_classifier(model, test_loader, device):
-    """评估分类器"""
+def extract_features(model, data_loader, device, max_samples=1000):
+    """提取特征用于t-SNE可视化"""
+    model.eval()
+    
+    # 创建特征提取器（去掉最后的分类层）
+    feature_extractor = nn.Sequential(*list(model.children())[:-1])
+    
+    features = []
+    labels = []
+    
+    sample_count = 0
+    with torch.no_grad():
+        for images, batch_labels in tqdm(data_loader, desc="Extracting features"):
+            if sample_count >= max_samples:
+                break
+                
+            images = images.to(device)
+            
+            # 提取特征
+            batch_features = feature_extractor(images)  # [batch, 512, 1, 1]
+            batch_features = batch_features.view(batch_features.size(0), -1)  # [batch, 512]
+            
+            features.append(batch_features.cpu().numpy())
+            labels.extend(batch_labels.numpy())
+            
+            sample_count += len(batch_labels)
+    
+    features = np.concatenate(features, axis=0)[:max_samples]
+    labels = np.array(labels)[:max_samples]
+    
+    return features, labels
+
+
+def visualize_tsne(features, labels, save_path='tsne_visualization.png'):
+    """t-SNE可视化特征聚类效果"""
+    print(f"开始t-SNE降维... 特征维度: {features.shape}")
+    
+    # t-SNE降维
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
+    features_2d = tsne.fit_transform(features)
+    
+    # 可视化
+    plt.figure(figsize=(12, 10))
+    
+    # 使用颜色映射
+    colors = plt.cm.tab20(np.linspace(0, 1, 31))
+    
+    for user_id in range(31):
+        mask = labels == user_id
+        if mask.sum() > 0:  # 如果该用户有样本
+            plt.scatter(features_2d[mask, 0], features_2d[mask, 1], 
+                       c=[colors[user_id]], label=f'User {user_id}', 
+                       alpha=0.6, s=20)
+    
+    plt.title('t-SNE Visualization of Learned Features\n(Different users should form distinct clusters)', 
+              fontsize=14)
+    plt.xlabel('t-SNE Component 1')
+    plt.ylabel('t-SNE Component 2')
+    
+    # 由于用户太多，只显示部分图例
+    handles, labels_legend = plt.gca().get_legend_handles_labels()
+    plt.legend(handles[::3], labels_legend[::3], bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print(f"t-SNE可视化已保存至: {save_path}")
+    
+    return features_2d
+
+
+def evaluate_classifier(model, test_loader, device, visualize=True):
+    """评估分类器，包含过拟合检查和可视化"""
     model.eval()
     
     correct = 0
@@ -95,15 +171,26 @@ def evaluate_classifier(model, test_loader, device):
     per_class_correct = [0] * 31
     per_class_total = [0] * 31
     
+    # 收集预测置信度分布
+    all_confidences = []
+    all_predictions = []
+    all_labels = []
+    
     with torch.no_grad():
         for images, labels in tqdm(test_loader, desc="Evaluating"):
             images, labels = images.to(device), labels.to(device)
             
             outputs = model(images)
-            _, predicted = outputs.max(1)
+            probabilities = torch.softmax(outputs, dim=1)
+            confidences, predicted = probabilities.max(1)
             
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
+            
+            # 收集数据用于分析
+            all_confidences.extend(confidences.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
             
             # 统计每个类别
             for label, pred in zip(labels, predicted):
@@ -115,12 +202,32 @@ def evaluate_classifier(model, test_loader, device):
     
     print(f"\n整体准确率: {overall_acc:.2f}% ({correct}/{total})")
     
+    # 分析置信度分布（过拟合检查）
+    confidences = np.array(all_confidences)
+    print(f"\n置信度分析（过拟合检查）:")
+    print(f"  平均置信度: {confidences.mean():.3f}")
+    print(f"  置信度标准差: {confidences.std():.3f}")
+    print(f"  高置信度样本比例 (>0.9): {(confidences > 0.9).mean():.3f}")
+    print(f"  低置信度样本比例 (<0.5): {(confidences < 0.5).mean():.3f}")
+    
+    # 如果置信度过于集中在高值，可能过拟合
+    if confidences.mean() > 0.95:
+        print("  ⚠️  警告: 平均置信度过高，可能存在过拟合！")
+    if (confidences > 0.99).mean() > 0.5:
+        print("  ⚠️  警告: 超过一半样本置信度>0.99，强烈怀疑过拟合！")
+    
     # 每个用户的准确率
     print("\n各用户准确率:")
     for i in range(31):
         if per_class_total[i] > 0:
             acc = 100. * per_class_correct[i] / per_class_total[i]
             print(f"  用户{i:2d}: {acc:5.2f}% ({per_class_correct[i]}/{per_class_total[i]})")
+    
+    # t-SNE可视化
+    if visualize:
+        print("\n进行t-SNE特征可视化...")
+        features, labels = extract_features(model, test_loader, device, max_samples=1000)
+        visualize_tsne(features, labels, save_path='test_tsne_visualization.png')
     
     return overall_acc
 
