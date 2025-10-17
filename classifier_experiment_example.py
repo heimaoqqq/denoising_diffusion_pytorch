@@ -123,43 +123,126 @@ def extract_features(model, data_loader, device, max_samples=1000):
     return features, labels
 
 
-def visualize_tsne(features, labels, save_path='tsne_visualization.png'):
-    """t-SNE可视化特征聚类效果"""
-    print(f"开始t-SNE降维... 特征维度: {features.shape}")
+def visualize_tsne_comparison(model, test_loader, device, per_class_accuracy):
+    """对比可视化：准确率最高vs最低的用户，生成两张独立图片"""
     
-    # t-SNE降维
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
-    features_2d = tsne.fit_transform(features)
+    # 根据准确率排序用户
+    user_accuracies = [(i, acc) for i, acc in enumerate(per_class_accuracy)]
+    user_accuracies.sort(key=lambda x: x[1], reverse=True)
     
-    # 可视化
-    plt.figure(figsize=(12, 10))
+    # 选择最高和最低准确率的用户
+    top_5_users = [user_id for user_id, _ in user_accuracies[:5]]
+    bottom_5_users = [user_id for user_id, _ in user_accuracies[-5:]]
     
-    # 使用颜色映射
-    colors = plt.cm.tab20(np.linspace(0, 1, 31))
+    print(f"准确率最高的5个用户: {top_5_users}")
+    print(f"对应准确率: {[user_accuracies[i][1] for i in range(5)]}")
+    print(f"准确率最低的5个用户: {bottom_5_users}")  
+    print(f"对应准确率: {[user_accuracies[i][1] for i in range(-5, 0)]}")
     
-    for user_id in range(31):
-        mask = labels == user_id
-        if mask.sum() > 0:  # 如果该用户有样本
-            plt.scatter(features_2d[mask, 0], features_2d[mask, 1], 
-                       c=[colors[user_id]], label=f'User {user_id}', 
-                       alpha=0.6, s=20)
+    # 深色颜色映射：红、黄、蓝、绿、紫
+    colors = ['#CC0000', '#B8860B', '#000080', '#006400', '#4B0082']  # 深红、深黄、深蓝、深绿、深紫
     
-    plt.title('t-SNE Visualization of Learned Features\n(Different users should form distinct clusters)', 
-              fontsize=14)
-    plt.xlabel('t-SNE Component 1')
-    plt.ylabel('t-SNE Component 2')
+    # === 第一张图：高准确率用户 ===
+    features_high, labels_high = extract_features_for_users(
+        model, test_loader, device, target_users=top_5_users, max_per_user=50
+    )
     
-    # 由于用户太多，只显示部分图例
-    handles, labels_legend = plt.gca().get_legend_handles_labels()
-    plt.legend(handles[::3], labels_legend[::3], bbox_to_anchor=(1.05, 1), loc='upper left')
+    print("开始t-SNE降维（高准确率用户）...")
+    tsne_high = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
+    features_2d_high = tsne_high.fit_transform(features_high)
     
+    # 绘制高准确率用户
+    plt.figure(figsize=(10, 8))
+    for i, user_id in enumerate(top_5_users):
+        mask = labels_high == user_id
+        if mask.sum() > 0:
+            plt.scatter(features_2d_high[mask, 0], features_2d_high[mask, 1], 
+                       c=colors[i], label=f'User {user_id} ({user_accuracies[i][1]:.1f}%)', 
+                       alpha=0.8, s=40, edgecolors='black', linewidth=0.8)
+    
+    plt.title('High Accuracy Users (Top 5)\n测试集特征分布', fontsize=16, fontweight='bold')
+    plt.xlabel('t-SNE Component 1', fontsize=12)
+    plt.ylabel('t-SNE Component 2', fontsize=12)
+    plt.legend(fontsize=12, frameon=True, fancybox=True, shadow=True)
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.savefig('tsne_high_accuracy_users.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    print(f"t-SNE可视化已保存至: {save_path}")
+    # === 第二张图：低准确率用户 ===
+    features_low, labels_low = extract_features_for_users(
+        model, test_loader, device, target_users=bottom_5_users, max_per_user=50
+    )
     
-    return features_2d
+    print("开始t-SNE降维（低准确率用户）...")
+    tsne_low = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
+    features_2d_low = tsne_low.fit_transform(features_low)
+    
+    # 绘制低准确率用户
+    plt.figure(figsize=(10, 8))
+    for i, user_id in enumerate(bottom_5_users):
+        mask = labels_low == user_id
+        if mask.sum() > 0:
+            acc_idx = len(user_accuracies) - 5 + i  # 计算在排序列表中的正确索引
+            plt.scatter(features_2d_low[mask, 0], features_2d_low[mask, 1], 
+                       c=colors[i], label=f'User {user_id} ({user_accuracies[acc_idx][1]:.1f}%)', 
+                       alpha=0.8, s=40, edgecolors='black', linewidth=0.8)
+    
+    plt.title('Low Accuracy Users (Bottom 5)\n测试集特征分布', fontsize=16, fontweight='bold')
+    plt.xlabel('t-SNE Component 1', fontsize=12)
+    plt.ylabel('t-SNE Component 2', fontsize=12)
+    plt.legend(fontsize=12, frameon=True, fancybox=True, shadow=True)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('tsne_low_accuracy_users.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("高准确率用户t-SNE已保存至: tsne_high_accuracy_users.png")
+    print("低准确率用户t-SNE已保存至: tsne_low_accuracy_users.png")
+
+
+def extract_features_for_users(model, data_loader, device, target_users=None, max_per_user=50):
+    """为特定用户提取特征"""
+    model.eval()
+    
+    # 创建特征提取器
+    feature_extractor = nn.Sequential(*list(model.children())[:-1])
+    
+    features = []
+    labels = []
+    user_counts = {user_id: 0 for user_id in target_users} if target_users else {}
+    
+    with torch.no_grad():
+        for images, batch_labels in tqdm(data_loader, desc="提取特定用户特征"):
+            images = images.to(device)
+            
+            for i, label in enumerate(batch_labels):
+                user_id = label.item()
+                
+                # 只处理目标用户
+                if target_users and user_id not in target_users:
+                    continue
+                    
+                # 控制每个用户的样本数
+                if target_users and user_counts[user_id] >= max_per_user:
+                    continue
+                
+                # 提取单张图像的特征
+                single_img = images[i:i+1]
+                feature = feature_extractor(single_img)  # [1, 512, 1, 1]
+                feature = feature.view(-1)  # [512]
+                
+                features.append(feature.cpu().numpy())
+                labels.append(user_id)
+                
+                if target_users:
+                    user_counts[user_id] += 1
+    
+    features = np.stack(features)
+    labels = np.array(labels)
+    
+    print(f"提取了 {len(features)} 个特征，涉及用户: {np.unique(labels)}")
+    return features, labels
 
 
 def evaluate_classifier(model, test_loader, device, visualize=True):
@@ -223,11 +306,19 @@ def evaluate_classifier(model, test_loader, device, visualize=True):
             acc = 100. * per_class_correct[i] / per_class_total[i]
             print(f"  用户{i:2d}: {acc:5.2f}% ({per_class_correct[i]}/{per_class_total[i]})")
     
-    # t-SNE可视化
+    # 计算每个用户的准确率（百分比）
+    per_class_accuracy = []
+    for i in range(31):
+        if per_class_total[i] > 0:
+            acc = 100. * per_class_correct[i] / per_class_total[i]
+            per_class_accuracy.append(acc)
+        else:
+            per_class_accuracy.append(0.0)
+    
+    # t-SNE对比可视化
     if visualize:
-        print("\n进行t-SNE特征可视化...")
-        features, labels = extract_features(model, test_loader, device, max_samples=1000)
-        visualize_tsne(features, labels, save_path='test_tsne_visualization.png')
+        print("\n进行t-SNE对比可视化（基于测试集）...")
+        visualize_tsne_comparison(model, test_loader, device, per_class_accuracy)
     
     return overall_acc
 
