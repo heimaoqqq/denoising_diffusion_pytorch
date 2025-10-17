@@ -35,7 +35,7 @@ def set_random_seed(seed=42):
     print(f"🎲 已设置随机种子: {seed} (结果可重现)")
 
 
-def train_classifier(model, train_loader, test_loader, criterion, optimizer, device, epochs=12, scheduler=None):
+def train_classifier(model, train_loader, test_loader, criterion, optimizer, device, epochs=15, scheduler=None):
     """训练分类器 - 基于测试准确率早停"""
     
     print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
@@ -414,7 +414,7 @@ def main():
     parser.add_argument('--synthetic_folder', type=str, default=None,
                         help='合成数据文件夹（可选，用于增强实验）')
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=30)
+    parser.add_argument('--epochs', type=int, default=15)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--seed', type=int, default=42,
