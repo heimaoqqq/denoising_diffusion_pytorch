@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import seaborn as sns
 import argparse
+import os
 
 from load_dataset import MicroDopplerDataset
 
@@ -370,6 +371,10 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
     
     results = {}
     
+    # 全局最低准确率追踪
+    global_min_accuracy = float('inf')
+    global_min_model_path = None
+    
     for batch_size in batch_sizes:
         print(f"\n🎯 测试 Batch Size = {batch_size}")
         print("="*70)
@@ -397,6 +402,20 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
             batch_models.append((accuracy, model, test_loader, device_used, per_class_correct, per_class_total))
             
             print(f"✅ 准确率: {accuracy:.2f}%")
+            
+            # 检查是否是新的全局最低准确率
+            if accuracy < global_min_accuracy:
+                # 删除之前的最低准确率模型
+                if global_min_model_path and os.path.exists(global_min_model_path):
+                    os.remove(global_min_model_path)
+                    print(f"🗑️ 删除旧的基准模型: {global_min_model_path}")
+                
+                # 保存新的最低准确率模型
+                global_min_accuracy = accuracy
+                global_min_model_path = f"baseline_model_batch{batch_size}_run{run+1}_acc{accuracy:.2f}.pth"
+                torch.save(model.state_dict(), global_min_model_path)
+                print(f"🔗 保存新的基准模型: {global_min_model_path}")
+                print(f"   新的最低准确率: {accuracy:.2f}%")
         
         # 统计结果
         batch_results = np.array(batch_results)
@@ -424,7 +443,12 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
             'min_run_idx': min_idx + 1
         }
     
-    return results
+    # 返回结果包含全局最低准确率信息
+    return {
+        'batch_results': results,
+        'global_min_accuracy': global_min_accuracy,
+        'global_min_model_path': global_min_model_path
+    }
 
 
 def generate_detailed_analysis(results, batch_sizes):
@@ -433,6 +457,11 @@ def generate_detailed_analysis(results, batch_sizes):
     print("\n" + "="*80)
     print("🏆 最终结果对比分析")
     print("="*80)
+    
+    # 获取批次结果和全局信息
+    batch_results = results['batch_results']
+    global_min_accuracy = results['global_min_accuracy']
+    global_min_model_path = results['global_min_model_path']
     
     # 对比表格
     print(f"\n📊 Batch Size 对比:")
@@ -443,7 +472,7 @@ def generate_detailed_analysis(results, batch_sizes):
     selected_accuracy = float('inf')
     
     for batch_size in batch_sizes:
-        result = results[batch_size]
+        result = batch_results[batch_size]
         print(f"{batch_size:<12}{result['mean']:<12.2f}{result['std']:<10.2f}{result['min']:<12.2f}第{result['min_run_idx']}次运行")
         
         # 选择全局最低准确率
@@ -451,11 +480,12 @@ def generate_detailed_analysis(results, batch_sizes):
             selected_accuracy = result['min']
             selected_batch_size = batch_size
     
-    print(f"\n🎯 最终选择: Batch Size {selected_batch_size}, 准确率: {selected_accuracy:.2f}%")
+    print(f"🎯 最终选择: 准确率 {global_min_accuracy:.2f}%")
+    print(f"🔗 基准模型已保存为: {global_min_model_path}")
     print("这将作为DDPM数据增强实验的基准!")
     
     # 生成详细分析和t-SNE可视化
-    selected_model_info = results[selected_batch_size]['min_model_info']
+    selected_model_info = batch_results[selected_batch_size]['min_model_info']
     model = selected_model_info[1]
     test_loader = selected_model_info[2] 
     device = selected_model_info[3]
@@ -480,8 +510,9 @@ def generate_detailed_analysis(results, batch_sizes):
     
     return {
         'selected_batch_size': selected_batch_size,
-        'selected_accuracy': selected_accuracy,
+        'selected_accuracy': global_min_accuracy,
         'selected_model': model,
+        'model_save_path': global_min_model_path,
         'all_results': results
     }
 
@@ -532,3 +563,5 @@ def main():
 if __name__ == '__main__':
     results = main()
     print(f"\n🏆 实验完成! 最终基准准确率: {results['selected_accuracy']:.2f}%")
+    print(f"🔗 基准模型文件: {results['model_save_path']}")
+    print("   现在可以用于后续的DDPM数据增强对比实验了！")
