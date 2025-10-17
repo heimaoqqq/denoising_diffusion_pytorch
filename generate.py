@@ -308,8 +308,8 @@ def main():
         )
         print(f"Saved grid to {grid_path}")
     
-    # 总是保存独立图像文件
-    print("Saving individual images...")
+    # 总是保存独立图像文件到用户子文件夹
+    print("Saving individual images to user subfolders...")
     sample_counts = {}  # 跟踪每个用户的样本计数
     
     for img, user_id in zip(all_generated, all_user_ids):
@@ -317,7 +317,12 @@ def main():
         if user_id not in sample_counts:
             sample_counts[user_id] = 0
         
-        save_path = output_dir / f'user_{user_id:02d}_sample_{sample_counts[user_id]:03d}.png'
+        # 创建用户子文件夹：user 0 -> ID_1, user 1 -> ID_2, ...
+        user_folder = output_dir / f'ID_{user_id + 1}'
+        user_folder.mkdir(exist_ok=True, parents=True)
+        
+        # 保存到用户文件夹下，文件名包含用户ID
+        save_path = user_folder / f'user_{user_id}_sample_{sample_counts[user_id]:03d}.png'
         
         # 使用和训练时相同的方法保存，但只传入单个图像
         # 确保img有batch维度 [1, 3, 256, 256]
