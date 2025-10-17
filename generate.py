@@ -84,19 +84,58 @@ def load_model(checkpoint_path, device='cuda'):
     )
     
     # 加载权重（优先使用EMA权重）
+    print("Analyzing checkpoint structure...")
+    
+    # 先检查checkpoint的实际结构
     if 'ema' in data:
-        print("Loading EMA weights...")
+        print("Found EMA in checkpoint")
         ema_state = data['ema']
-        # EMA保存的是 'ema_model' 和 'online_model'
-        if 'ema_model' in ema_state:
+        
+        # 检查EMA权重是否是扁平结构（带前缀）还是嵌套结构
+        sample_keys = list(ema_state.keys())[:5]
+        print(f"Sample EMA keys: {sample_keys}")
+        
+        if any(key.startswith('ema_model.') for key in ema_state.keys()):
+            # 扁平结构：所有权重都带ema_model.前缀
+            print("Detected flat EMA structure with prefixes")
+            fixed_state = {}
+            prefix_to_remove = 'ema_model.'
+            
+            for key, value in ema_state.items():
+                if key.startswith(prefix_to_remove):
+                    new_key = key[len(prefix_to_remove):]
+                    fixed_state[new_key] = value
+                    
+            model_state = fixed_state
+            print(f"Extracted {len(fixed_state)} weights from EMA")
+            
+        elif 'ema_model' in ema_state:
+            # 嵌套结构：ema_model是一个子字典
+            print("Detected nested EMA structure")
             model_state = ema_state['ema_model']
         else:
+            # 直接使用EMA权重
+            print("Using EMA weights directly")
             model_state = ema_state
     else:
         print("Loading model weights...")
         model_state = data['model']
     
-    diffusion.load_state_dict(model_state)
+    # 加载权重
+    try:
+        diffusion.load_state_dict(model_state, strict=True)
+        print("✓ Model weights loaded successfully")
+    except RuntimeError as e:
+        print(f"Strict loading failed: {str(e)[:200]}...")
+        print("Attempting relaxed loading...")
+        
+        # 尝试非严格加载
+        result = diffusion.load_state_dict(model_state, strict=False)
+        if result.missing_keys:
+            print(f"Warning: {len(result.missing_keys)} missing keys")
+        if result.unexpected_keys:
+            print(f"Warning: {len(result.unexpected_keys)} unexpected keys")
+        print("✓ Model loaded with warnings")
     diffusion = diffusion.to(device)
     diffusion.eval()
     
