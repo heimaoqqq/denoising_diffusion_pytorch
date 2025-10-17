@@ -48,8 +48,13 @@ class GeneratedImageDataset(Dataset):
                 user_id = int(user_folder.name.split('_')[1])  # 提取用户ID
                 label = user_id - 1  # 转换为0-30标签
                 
+                print(f"  处理文件夹: {user_folder.name}, 用户ID: {user_id}, 标签: {label}")
+                
                 for img_path in sorted(user_folder.glob("*.png")):
                     self.samples.append((img_path, label))
+                    # 打印前几个文件名作为调试
+                    if len(self.samples) <= 5:
+                        print(f"    示例文件: {img_path.name} -> 标签: {label}")
         
         print(f"找到 {len(self.samples)} 张生成图像")
         
@@ -88,6 +93,10 @@ def load_pretrained_classifier(model_path, device):
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"  已加载checkpoint格式，epoch: {checkpoint.get('epoch', 'unknown')}")
+        if 'accuracy' in checkpoint:
+            print(f"  模型训练准确率: {checkpoint['accuracy']:.2f}%")
+        if 'model_info' in checkpoint:
+            print(f"  模型信息: {checkpoint['model_info']}")
     else:
         model.load_state_dict(checkpoint)
         print(f"  已加载state_dict格式")
@@ -116,6 +125,7 @@ def evaluate_generated_images(model, generated_loader, device):
     per_class_correct = [0] * 31
     per_class_total = [0] * 31
     
+    batch_count = 0
     with torch.no_grad():
         for images, labels in tqdm(generated_loader, desc="评估中"):
             images, labels = images.to(device), labels.to(device)
@@ -123,6 +133,13 @@ def evaluate_generated_images(model, generated_loader, device):
             outputs = model(images)
             probabilities = torch.softmax(outputs, dim=1)
             confidences, predicted = probabilities.max(1)
+            
+            # 调试：打印前几个batch的预测结果
+            if batch_count < 3:
+                print(f"\n调试 - Batch {batch_count}:")
+                for i in range(min(5, len(labels))):
+                    print(f"  真实标签: {labels[i].item()}, 预测标签: {predicted[i].item()}, 置信度: {confidences[i].item():.3f}")
+            batch_count += 1
             
             # 统计准确率
             total += labels.size(0)
@@ -309,7 +326,7 @@ def main():
     
     # 路径参数
     parser.add_argument('--model_path', type=str,
-                        default='/kaggle/working/denoising_diffusion_pytorch/trained_models/classifier_real_only_acc90.16_seed42.pth',
+                        default='/kaggle/input/model-73-pt/model-73.pt',
                         help='预训练分类器路径')
     parser.add_argument('--generated_folder', type=str,
                         default='/kaggle/input/generated',
