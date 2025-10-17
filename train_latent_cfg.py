@@ -52,7 +52,7 @@ class Config:
     
     # === 路径配置 ===
     vae_path = '/kaggle/input/kl-vae/kl_vae_best.pt'
-    data_path = '/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_free'
+    data_path = '/kaggle/input/organized-gait-dataset/Normal_line'
     results_folder = './results'
     latents_cache_folder = './latents_cache'  # 预处理缓存
     
@@ -70,7 +70,7 @@ class Config:
     dim_mults = (1, 2, 4)  # 3层结构
     attn_dim_head = 32
     attn_heads = 4
-    cond_drop_prob = 0.5  # CFG条件丢弃概率
+    cond_drop_prob = 0.3  # CFG条件丢弃概率（增加无条件训练，防止模式崩塌）
     
     # === 扩散配置 ===
     timesteps = 1000
@@ -79,7 +79,7 @@ class Config:
     beta_schedule = 'cosine'
     
     # === 采样配置 ===
-    cond_scale = 6.0  # CFG强度（推荐范围3-8，越高越符合条件但多样性降低）
+    cond_scale = 2.5  # CFG强度（用户间差异极小，使用温和指导避免过拟合）
     rescaled_phi = 0.7  # CFG++ rescaling（默认0.7）
     
     # === 训练配置（针对P100 16GB优化）===
@@ -89,7 +89,7 @@ class Config:
     train_num_steps = 150000  # ~2小时（比之前快2倍）
     
     # === 优化配置（防止过拟合）===
-    ema_decay = 0.9995  # 高EMA平滑
+    ema_decay = 0.995  # 降低EMA平滑，增加多样性
     ema_update_every = 10
     max_grad_norm = 1.0  # 梯度裁剪
     adam_betas = (0.9, 0.99)
