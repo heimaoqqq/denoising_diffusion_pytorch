@@ -448,15 +448,11 @@ def main():
         model, train_loader, criterion, optimizer, device, args.epochs, scheduler
     )
     
-    # 训练完成后进行测试
+    # 训练完成后进行测试（包含t-SNE可视化）
     print("\n评估分类器...")
-    accuracy = evaluate_classifier(model, test_loader, device)
+    accuracy = evaluate_classifier(model, test_loader, device, visualize=True)
     
     print(f"\n🏆 训练完成！最终测试准确率: {accuracy:.2f}%")
-    
-    # 可选：生成t-SNE可视化
-    print("\n生成t-SNE可视化...")
-    visualize_tsne(model, test_loader, device)
     
     return accuracy
 
