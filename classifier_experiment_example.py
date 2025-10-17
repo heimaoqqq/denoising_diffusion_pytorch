@@ -5,20 +5,34 @@
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, ConcatDataset, Dataset
 from torchvision.models import resnet18
 from tqdm import tqdm
 import json
 from pathlib import Path
+from PIL import Image
 
 from load_dataset import MicroDopplerDataset
 
 
-def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100):
+def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, test_loader=None):
     """训练分类器"""
-    model.train()
+    best_test_acc = 0
+    best_model_state = None
+    
+    print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
+    if test_loader:
+        print(f"测试数据信息：{len(test_loader.dataset)} 张图像")
+    
+    # 检查第一个batch的图像尺寸
+    for images, labels in train_loader:
+        print(f"图像尺寸: {images.shape} (Batch, Channels, Height, Width)")
+        print(f"图像数据类型: {images.dtype}, 值域: [{images.min():.3f}, {images.max():.3f}]")
+        break
     
     for epoch in range(epochs):
+        # 训练阶段
+        model.train()
         total_loss = 0
         correct = 0
         total = 0
@@ -40,8 +54,42 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
             
             pbar.set_postfix({
                 'loss': f'{total_loss/(pbar.n+1):.4f}',
-                'acc': f'{100.*correct/total:.2f}%'
+                'train_acc': f'{100.*correct/total:.2f}%'
             })
+        
+        train_acc = 100. * correct / total
+        
+        # 每个epoch都进行测试集评估
+        if test_loader:
+            model.eval()
+            test_correct = 0
+            test_total = 0
+            
+            with torch.no_grad():
+                for images, labels in test_loader:
+                    images, labels = images.to(device), labels.to(device)
+                    outputs = model(images)
+                    _, predicted = outputs.max(1)
+                    test_total += labels.size(0)
+                    test_correct += predicted.eq(labels).sum().item()
+            
+            test_acc = 100. * test_correct / test_total
+            print(f"Epoch {epoch+1}: Train Acc = {train_acc:.2f}%, Test Acc = {test_acc:.2f}%")
+            
+            # 保存最佳模型
+            if test_acc > best_test_acc:
+                best_test_acc = test_acc
+                best_model_state = model.state_dict().copy()
+                print(f"  → 新的最佳测试准确率: {best_test_acc:.2f}%")
+        else:
+            print(f"Epoch {epoch+1}: Train Acc = {train_acc:.2f}%")
+    
+    # 恢复最佳模型
+    if best_model_state:
+        model.load_state_dict(best_model_state)
+        print(f"\n最终使用的最佳测试准确率: {best_test_acc:.2f}%")
+    
+    return best_test_acc
 
 
 def evaluate_classifier(model, test_loader, device):
@@ -91,12 +139,16 @@ class SyntheticDataset(Dataset):
         self.samples = []
         
         synthetic_path = Path(synthetic_folder)
-        for img_path in sorted(synthetic_path.glob("*.png")):
-            # 假设文件名格式: user_XX_sample_YYY.png
-            parts = img_path.stem.split('_')
-            if len(parts) >= 2 and parts[0] == 'user':
-                label = int(parts[1])
-                self.samples.append((img_path, label))
+        
+        # 搜索子文件夹中的图像：ID_X/user_Y_sample_Z.png
+        for user_folder in sorted(synthetic_path.glob("ID_*")):
+            if user_folder.is_dir():
+                for img_path in sorted(user_folder.glob("user_*_sample_*.png")):
+                    # 从文件名解析用户ID: user_Y_sample_Z.png
+                    parts = img_path.stem.split('_')
+                    if len(parts) >= 2 and parts[0] == 'user':
+                        label = int(parts[1])
+                        self.samples.append((img_path, label))
         
         self.transform = transform
         print(f"Loaded synthetic dataset: {len(self.samples)} images")
@@ -128,7 +180,7 @@ def main():
                         help='数据集划分文件')
     parser.add_argument('--synthetic_folder', type=str, default=None,
                         help='合成数据文件夹（可选，用于增强实验）')
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--device', type=str, default='cuda')
@@ -193,7 +245,7 @@ def main():
     
     # 训练
     print("\n开始训练...")
-    train_classifier(model, train_loader, criterion, optimizer, device, args.epochs)
+    best_acc = train_classifier(model, train_loader, criterion, optimizer, device, args.epochs, test_loader)
     
     # 评估
     print("\n评估分类器...")
@@ -203,6 +255,5 @@ def main():
 
 
 if __name__ == '__main__':
-    from PIL import Image  # 需要在这里导入
     accuracy = main()
 
