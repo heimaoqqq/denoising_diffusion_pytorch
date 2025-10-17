@@ -15,20 +15,21 @@ from PIL import Image
 from load_dataset import MicroDopplerDataset
 
 
-def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, test_loader=None, scheduler=None):
-    """训练分类器"""
-    best_test_acc = 0
-    best_model_state = None
+def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, scheduler=None):
+    """训练分类器 - 基于训练loss早停，避免测试集泄露"""
     
     print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
-    if test_loader:
-        print(f"测试数据信息：{len(test_loader.dataset)} 张图像")
     
     # 检查第一个batch的图像尺寸
     for images, labels in train_loader:
         print(f"图像尺寸: {images.shape} (Batch, Channels, Height, Width)")
         print(f"图像数据类型: {images.dtype}, 值域: [{images.min():.3f}, {images.max():.3f}]")
         break
+    
+    # 早停参数
+    best_train_loss = float('inf')
+    patience_counter = 0
+    early_stop_patience = 5  # 连续5个epoch训练loss不下降则停止
     
     for epoch in range(epochs):
         # 训练阶段
@@ -57,43 +58,32 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
                 'train_acc': f'{100.*correct/total:.2f}%'
             })
         
+        # 计算epoch平均loss和准确率
+        avg_train_loss = total_loss / len(train_loader)
         train_acc = 100. * correct / total
         
-        # 每个epoch都进行测试集评估
-        if test_loader:
-            model.eval()
-            test_correct = 0
-            test_total = 0
-            
-            with torch.no_grad():
-                for images, labels in test_loader:
-                    images, labels = images.to(device), labels.to(device)
-                    outputs = model(images)
-                    _, predicted = outputs.max(1)
-                    test_total += labels.size(0)
-                    test_correct += predicted.eq(labels).sum().item()
-            
-            test_acc = 100. * test_correct / test_total
-            print(f"Epoch {epoch+1}: Train Acc = {train_acc:.2f}%, Test Acc = {test_acc:.2f}%")
-            
-            # 保存最佳模型
-            if test_acc > best_test_acc:
-                best_test_acc = test_acc
-                best_model_state = model.state_dict().copy()
-                print(f"  → 新的最佳测试准确率: {best_test_acc:.2f}%")
-                
-            # 学习率调度
-            if scheduler:
-                scheduler.step(test_acc)
+        print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Train Acc = {train_acc:.2f}%")
+        
+        # 基于训练loss的早停
+        if avg_train_loss < best_train_loss:
+            best_train_loss = avg_train_loss
+            patience_counter = 0
+            print(f"  → 训练loss改善: {best_train_loss:.4f}")
         else:
-            print(f"Epoch {epoch+1}: Train Acc = {train_acc:.2f}%")
+            patience_counter += 1
+            print(f"  → 训练loss未改善 ({patience_counter}/{early_stop_patience})")
+            
+        # 早停检查
+        if patience_counter >= early_stop_patience:
+            print(f"\n训练loss连续 {early_stop_patience} epochs未改善，提前停止训练")
+            print(f"最终训练loss: {best_train_loss:.4f}")
+            break
+            
+        # 学习率调度（基于训练loss）
+        if scheduler:
+            scheduler.step(avg_train_loss)
     
-    # 恢复最佳模型
-    if best_model_state:
-        model.load_state_dict(best_model_state)
-        print(f"\n最终使用的最佳测试准确率: {best_test_acc:.2f}%")
-    
-    return best_test_acc
+    print(f"训练完成，共进行 {epoch+1} epochs")
 
 
 def evaluate_classifier(model, test_loader, device):
@@ -247,14 +237,14 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     
-    # 学习率调度器：在验证准确率停止提升时降低学习率
+    # 学习率调度器：在训练loss停止下降时降低学习率
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=10, verbose=True
+        optimizer, mode='min', factor=0.5, patience=3, verbose=True
     )
     
     # 训练
     print("\n开始训练...")
-    best_acc = train_classifier(model, train_loader, criterion, optimizer, device, args.epochs, test_loader, scheduler)
+    train_classifier(model, train_loader, criterion, optimizer, device, args.epochs, scheduler)
     
     # 评估
     print("\n评估分类器...")
