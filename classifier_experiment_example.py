@@ -33,7 +33,7 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
     # 早停参数
     best_train_loss = float('inf')
     patience_counter = 0
-    early_stop_patience = 3  # 连续3个epoch训练loss不下降则停止
+    early_stop_patience = 7  # 连续7个epoch训练loss不下降则停止
     
     for epoch in range(epochs):
         # 训练阶段
@@ -433,11 +433,18 @@ def main():
     
     # 优化器和损失函数
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    # 针对小数据集(1550张训练集)的优化器设置
+    optimizer = torch.optim.Adam(
+        model.parameters(), 
+        lr=args.lr, 
+        weight_decay=5e-4,  # 适中的正则化，不要过强
+        betas=(0.9, 0.999),
+        eps=1e-8
+    )
     
-    # 学习率调度器：在训练loss停止下降时降低学习率
+    # 学习率调度器：小数据集需要更谨慎
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=3, verbose=True
+        optimizer, mode='min', factor=0.7, patience=5, verbose=True, min_lr=1e-6
     )
     
     # 训练
