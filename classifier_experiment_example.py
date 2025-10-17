@@ -160,7 +160,7 @@ def visualize_tsne_comparison(model, test_loader, device, per_class_accuracy):
                        c=colors[i], label=f'User {user_id} ({user_accuracies[i][1]:.1f}%)', 
                        alpha=0.8, s=40, edgecolors='black', linewidth=0.8)
     
-    plt.title('High Accuracy Users (Top 5)\n测试集特征分布', fontsize=16, fontweight='bold')
+    plt.title('High Accuracy Users (Top 5)\nTest Set Feature Distribution', fontsize=16, fontweight='bold')
     plt.xlabel('t-SNE Component 1', fontsize=12)
     plt.ylabel('t-SNE Component 2', fontsize=12)
     plt.legend(fontsize=12, frameon=True, fancybox=True, shadow=True)
@@ -188,7 +188,7 @@ def visualize_tsne_comparison(model, test_loader, device, per_class_accuracy):
                        c=colors[i], label=f'User {user_id} ({user_accuracies[acc_idx][1]:.1f}%)', 
                        alpha=0.8, s=40, edgecolors='black', linewidth=0.8)
     
-    plt.title('Low Accuracy Users (Bottom 5)\n测试集特征分布', fontsize=16, fontweight='bold')
+    plt.title('Low Accuracy Users (Bottom 5)\nTest Set Feature Distribution', fontsize=16, fontweight='bold')
     plt.xlabel('t-SNE Component 1', fontsize=12)
     plt.ylabel('t-SNE Component 2', fontsize=12)
     plt.legend(fontsize=12, frameon=True, fancybox=True, shadow=True)
@@ -213,7 +213,7 @@ def extract_features_for_users(model, data_loader, device, target_users=None, ma
     user_counts = {user_id: 0 for user_id in target_users} if target_users else {}
     
     with torch.no_grad():
-        for images, batch_labels in tqdm(data_loader, desc="提取特定用户特征"):
+        for images, batch_labels in tqdm(data_loader, desc="Extracting specific user features"):
             images = images.to(device)
             
             for i, label in enumerate(batch_labels):
