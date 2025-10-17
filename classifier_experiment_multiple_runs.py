@@ -370,10 +370,7 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
     """运行多次实验，对比不同batch size"""
     
     results = {}
-    
-    # 全局最低准确率追踪
-    global_min_accuracy = float('inf')
-    global_min_model_path = None
+    all_saved_models = []  # 记录所有保存的模型信息
     
     for batch_size in batch_sizes:
         print(f"\n🎯 测试 Batch Size = {batch_size}")
@@ -403,19 +400,19 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
             
             print(f"✅ 准确率: {accuracy:.2f}%")
             
-            # 检查是否是新的全局最低准确率
-            if accuracy < global_min_accuracy:
-                # 删除之前的最低准确率模型
-                if global_min_model_path and os.path.exists(global_min_model_path):
-                    os.remove(global_min_model_path)
-                    print(f"🗑️ 删除旧的基准模型: {global_min_model_path}")
-                
-                # 保存新的最低准确率模型
-                global_min_accuracy = accuracy
-                global_min_model_path = f"baseline_model_batch{batch_size}_run{run+1}_acc{accuracy:.2f}.pth"
-                torch.save(model.state_dict(), global_min_model_path)
-                print(f"🔗 保存新的基准模型: {global_min_model_path}")
-                print(f"   新的最低准确率: {accuracy:.2f}%")
+            # 保存每一个模型
+            model_path = f"model_batch{batch_size}_run{run+1}_acc{accuracy:.2f}.pth"
+            torch.save(model.state_dict(), model_path)
+            print(f"💾 模型已保存: {model_path}")
+            
+            # 记录模型信息
+            model_info = {
+                'batch_size': batch_size,
+                'run': run + 1,
+                'accuracy': accuracy,
+                'path': model_path
+            }
+            all_saved_models.append(model_info)
         
         # 统计结果
         batch_results = np.array(batch_results)
@@ -443,11 +440,10 @@ def run_multiple_experiments(data_root, split_file, synthetic_folder, batch_size
             'min_run_idx': min_idx + 1
         }
     
-    # 返回结果包含全局最低准确率信息
+    # 返回结果包含所有模型信息
     return {
         'batch_results': results,
-        'global_min_accuracy': global_min_accuracy,
-        'global_min_model_path': global_min_model_path
+        'all_saved_models': all_saved_models
     }
 
 
@@ -458,61 +454,34 @@ def generate_detailed_analysis(results, batch_sizes):
     print("🏆 最终结果对比分析")
     print("="*80)
     
-    # 获取批次结果和全局信息
+    # 获取批次结果和所有模型信息
     batch_results = results['batch_results']
-    global_min_accuracy = results['global_min_accuracy']
-    global_min_model_path = results['global_min_model_path']
+    all_saved_models = results['all_saved_models']
     
     # 对比表格
     print(f"\n📊 Batch Size 对比:")
-    print(f"{'Batch Size':<12}{'平均准确率':<12}{'标准差':<10}{'最低准确率':<12}{'选择模型':<12}")
-    print("-" * 60)
-    
-    selected_batch_size = None
-    selected_accuracy = float('inf')
+    print(f"{'Batch Size':<12}{'平均准确率':<12}{'标准差':<10}{'最高准确率':<12}{'最低准确率':<12}")
+    print("-" * 70)
     
     for batch_size in batch_sizes:
         result = batch_results[batch_size]
-        print(f"{batch_size:<12}{result['mean']:<12.2f}{result['std']:<10.2f}{result['min']:<12.2f}第{result['min_run_idx']}次运行")
-        
-        # 选择全局最低准确率
-        if result['min'] < selected_accuracy:
-            selected_accuracy = result['min']
-            selected_batch_size = batch_size
+        print(f"{batch_size:<12}{result['mean']:<12.2f}{result['std']:<10.2f}{result['max']:<12.2f}{result['min']:<12.2f}")
     
-    print(f"🎯 最终选择: 准确率 {global_min_accuracy:.2f}%")
-    print(f"🔗 基准模型已保存为: {global_min_model_path}")
-    print("这将作为DDPM数据增强实验的基准!")
+    # 显示所有保存的模型信息
+    print(f"\n💾 所有保存的模型 ({len(all_saved_models)} 个):")
+    print("-" * 70)
+    for i, model_info in enumerate(all_saved_models):
+        print(f"{i+1:2d}. {model_info['path']}")
+        print(f"    Batch Size: {model_info['batch_size']}, Run: {model_info['run']}, 准确率: {model_info['accuracy']:.2f}%")
     
-    # 生成详细分析和t-SNE可视化
-    selected_model_info = batch_results[selected_batch_size]['min_model_info']
-    model = selected_model_info[1]
-    test_loader = selected_model_info[2] 
-    device = selected_model_info[3]
-    per_class_correct = selected_model_info[4]
-    per_class_total = selected_model_info[5]
-    
-    print(f"\n📊 选择模型的详细分析:")
-    print("="*60)
-    
-    # 计算每个用户的准确率
-    per_class_accuracy = []
-    for i in range(31):
-        if per_class_total[i] > 0:
-            acc = 100. * per_class_correct[i] / per_class_total[i]
-            per_class_accuracy.append(acc)
-        else:
-            per_class_accuracy.append(0.0)
-    
-    # 生成t-SNE可视化
-    print("\nPerforming t-SNE comparison visualization (based on test set)...")
-    visualize_tsne_comparison(model, test_loader, device, per_class_accuracy)
+    print(f"\n📋 模型选择建议:")
+    print(f"所有准确率范围: {min([m['accuracy'] for m in all_saved_models]):.2f}% - {max([m['accuracy'] for m in all_saved_models]):.2f}%")
+    print(f"平均准确率: {np.mean([m['accuracy'] for m in all_saved_models]):.2f}%")
+    print(f"你可以根据需要手动选择任何一个模型作为基准")
     
     return {
-        'selected_batch_size': selected_batch_size,
-        'selected_accuracy': global_min_accuracy,
-        'selected_model': model,
-        'model_save_path': global_min_model_path,
+        'batch_results': batch_results,
+        'all_saved_models': all_saved_models,
         'all_results': results
     }
 
@@ -562,6 +531,6 @@ def main():
 
 if __name__ == '__main__':
     results = main()
-    print(f"\n🏆 实验完成! 最终基准准确率: {results['selected_accuracy']:.2f}%")
-    print(f"🔗 基准模型文件: {results['model_save_path']}")
-    print("   现在可以用于后续的DDPM数据增强对比实验了！")
+    print(f"\n🏆 实验完成!")
+    print(f"💾 总共保存了 {len(results['all_saved_models'])} 个模型")
+    print("   你可以手动选择任何一个作为DDPM对比实验的基准")
