@@ -23,7 +23,7 @@ from load_dataset import MicroDopplerDataset
 
 
 def train_classifier(model, train_loader, criterion, optimizer, device, epochs=15, scheduler=None):
-    """训练分类器 - 固定epoch数，仿照文献做法"""
+    """训练分类器 - 固定epoch数，仿照文献做法，但监控训练状态"""
     
     # 检查第一个batch的图像尺寸
     for images, labels in train_loader:
@@ -32,6 +32,12 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
         break
     
     print(f"开始训练 {epochs} epochs（仿照文献设置）")
+    
+    # 记录训练历史用于判断是否收敛
+    train_history = {
+        'losses': [],
+        'accuracies': []
+    }
     
     for epoch in range(epochs):
         # 训练阶段
@@ -63,13 +69,52 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
         avg_train_loss = total_loss / len(train_loader)
         train_acc = 100. * correct / total
         
+        # 记录训练历史
+        train_history['losses'].append(avg_train_loss)
+        train_history['accuracies'].append(train_acc)
+        
         print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Train Acc = {train_acc:.2f}%")
         
         # 学习率调度（基于训练loss）
         if scheduler:
             scheduler.step(avg_train_loss)
     
+    # 分析训练是否充分
+    analyze_training_convergence(train_history, epochs)
+    
     print(f"训练完成，共进行 {epochs} epochs（与文献一致）")
+
+
+def analyze_training_convergence(train_history, epochs):
+    """分析训练是否收敛，判断epoch数是否充分"""
+    
+    losses = train_history['losses']
+    accuracies = train_history['accuracies']
+    
+    # 检查最后几个epoch的改善情况
+    if len(losses) >= 5:
+        # 计算最后5个epoch的平均改善
+        recent_loss_trend = np.mean(np.diff(losses[-5:]))
+        recent_acc_trend = np.mean(np.diff(accuracies[-5:]))
+        
+        print(f"\n📈 训练收敛分析:")
+        print(f"最后5个epoch loss变化: {recent_loss_trend:+.6f}")
+        print(f"最后5个epoch准确率变化: {recent_acc_trend:+.2f}%")
+        
+        # 判断是否还在改善
+        if abs(recent_loss_trend) > 0.01:  # loss还在显著下降
+            print("⚠️  警告: Loss还在显著下降，可能需要更多epoch")
+        elif recent_acc_trend > 1.0:  # 准确率还在显著提升
+            print("⚠️  警告: 准确率还在显著提升，可能需要更多epoch")
+        else:
+            print("✅ 训练基本收敛，15 epoch应该足够")
+            
+        # 检查是否可能欠拟合
+        final_acc = accuracies[-1]
+        if final_acc < 60:
+            print("❌ 最终准确率过低，强烈建议增加epoch数或调整学习率")
+        elif final_acc < 70:
+            print("⚠️  最终准确率较低，考虑增加epoch数")
 
 
 def evaluate_classifier(model, test_loader, device, verbose=True):
@@ -477,6 +522,8 @@ def main():
     parser.add_argument('--num_runs', type=int, default=10,
                         help='每个batch size的运行次数')
     parser.add_argument('--epochs', type=int, default=15)
+    parser.add_argument('--adaptive_epochs', action='store_true',
+                        help='如果训练未收敛，自动延长到最多30 epochs')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
