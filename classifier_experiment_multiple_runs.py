@@ -521,7 +521,7 @@ def main():
                         help='要测试的batch size列表')
     parser.add_argument('--num_runs', type=int, default=10,
                         help='每个batch size的运行次数')
-    parser.add_argument('--epochs', type=int, default=15)
+    parser.add_argument('--epochs', type=int, default=8)
     parser.add_argument('--adaptive_epochs', action='store_true',
                         help='如果训练未收敛，自动延长到最多30 epochs')
     parser.add_argument('--lr', type=float, default=1e-4)
