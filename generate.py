@@ -232,7 +232,7 @@ def main():
     
     # 路径参数
     parser.add_argument('--vae_path', type=str,
-                        default='/kaggle/input/kl-vae-best-pt/kl_vae_best.pt',
+                        default='/kaggle/input/kl-vae/kl_vae_best.pt',
                         help='Path to VAE checkpoint')
     parser.add_argument('--output_dir', type=str, default='./generated',
                         help='Output directory for generated images')
