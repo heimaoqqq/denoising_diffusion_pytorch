@@ -15,11 +15,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import seaborn as sns
+import random
 
 from load_dataset import MicroDopplerDataset
 
 
-def train_classifier(model, train_loader, test_loader, criterion, optimizer, device, epochs=30, scheduler=None):
+def set_random_seed(seed=42):
+    """设置所有随机种子以确保结果可重现"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # 确保CUDA操作的确定性
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    print(f"🎲 已设置随机种子: {seed} (结果可重现)")
+
+
+def train_classifier(model, train_loader, test_loader, criterion, optimizer, device, epochs=12, scheduler=None):
     """训练分类器 - 基于测试准确率早停"""
     
     print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
@@ -398,10 +414,15 @@ def main():
     parser.add_argument('--synthetic_folder', type=str, default=None,
                         help='合成数据文件夹（可选，用于增强实验）')
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=30)
+    parser.add_argument('--epochs', type=int, default=12)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='随机种子，确保结果可重现')
     args = parser.parse_args()
+    
+    # 设置随机种子 - 在所有操作之前
+    set_random_seed(args.seed)
     
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     
