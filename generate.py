@@ -55,9 +55,9 @@ def load_model(checkpoint_path, device='cuda'):
     dim_mults = config.get('dim_mults', (1, 2, 4))
     num_users = config.get('num_users', 31)
     latent_channels = config.get('latent_channels', 4)
-    latent_size = config.get('latent_size', 64)
+    latent_size = config.get('latent_size', 32)  # 修正：VAE是8倍下采样，256/8=32
     timesteps = config.get('timesteps', 1000)
-    sampling_timesteps = config.get('sampling_timesteps', 250)
+    sampling_timesteps = config.get('sampling_timesteps', 250)  # 修正：和训练时一致
     objective = config.get('objective', 'pred_v')
     
     # 创建Unet
@@ -65,10 +65,10 @@ def load_model(checkpoint_path, device='cuda'):
         dim=dim,
         dim_mults=dim_mults,
         num_classes=num_users,
-        cond_drop_prob=0.5,
+        cond_drop_prob=config.get('cond_drop_prob', 0.5),
         channels=latent_channels,
-        attn_dim_head=32,
-        attn_heads=4,
+        attn_dim_head=config.get('attn_dim_head', 32),
+        attn_heads=config.get('attn_heads', 4),
         learned_variance=False
     )
     
@@ -80,7 +80,9 @@ def load_model(checkpoint_path, device='cuda'):
         sampling_timesteps=sampling_timesteps,
         objective=objective,
         beta_schedule='cosine',
-        auto_normalize=False  # 潜在空间不归一化
+        min_snr_loss_weight=config.get('min_snr_loss_weight', True),
+        min_snr_gamma=config.get('min_snr_gamma', 5),
+        auto_normalize=config.get('auto_normalize', False)  # 从训练配置读取
     )
     
     # 加载权重（优先使用EMA权重）
@@ -198,7 +200,8 @@ def generate_samples(diffusion, vae, user_ids, cond_scale=6.0, device='cuda'):
         print(f"Sampling latents for {len(user_ids)} samples (cond_scale={cond_scale})...")
         sampled_latents = diffusion.sample(
             classes=user_ids,
-            cond_scale=cond_scale
+            cond_scale=cond_scale,
+            rescaled_phi=0.7  # CFG++ rescaling，与训练时一致
         )
         
         # VAE解码
