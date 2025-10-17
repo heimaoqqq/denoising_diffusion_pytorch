@@ -20,7 +20,7 @@ import argparse
 from pathlib import Path
 
 import torch
-from torchvision import utils
+from torchvision import utils, transforms
 import numpy as np
 from tqdm import tqdm
 
@@ -308,6 +308,7 @@ def main():
     # 总是保存独立图像文件
     print("Saving individual images...")
     sample_counts = {}  # 跟踪每个用户的样本计数
+    to_pil = transforms.ToPILImage()
     
     for img, user_id in zip(all_generated, all_user_ids):
         # 为每个用户维护独立的样本计数
@@ -315,12 +316,17 @@ def main():
             sample_counts[user_id] = 0
         
         save_path = output_dir / f'user_{user_id:02d}_sample_{sample_counts[user_id]:03d}.png'
-        # 确保img有正确的维度 [1, 3, 256, 256]
-        if img.dim() == 3:  # [3, 256, 256] -> [1, 3, 256, 256]
-            img_to_save = img.unsqueeze(0)
-        else:
-            img_to_save = img
-        utils.save_image(img_to_save, str(save_path), nrow=1)
+        
+        # 确保img是 [3, 256, 256] 格式（单个图像，无batch维度）
+        if img.dim() == 4:  # [1, 3, 256, 256] -> [3, 256, 256]
+            img = img.squeeze(0)
+        
+        # 确保值在[0,1]范围内
+        img = torch.clamp(img, 0, 1)
+        
+        # 转换为PIL图像并保存
+        pil_img = to_pil(img)
+        pil_img.save(save_path)
         sample_counts[user_id] += 1
     
     print(f"✓ Saved {len(all_generated)} individual images to {output_dir}")
