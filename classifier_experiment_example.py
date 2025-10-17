@@ -33,7 +33,7 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
     # 早停参数
     best_train_loss = float('inf')
     patience_counter = 0
-    early_stop_patience = 7  # 连续7个epoch训练loss不下降则停止
+    early_stop_patience = 3  # 连续7个epoch训练loss不下降则停止
     
     for epoch in range(epochs):
         # 训练阶段
