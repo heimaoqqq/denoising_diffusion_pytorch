@@ -19,8 +19,8 @@ import seaborn as sns
 from load_dataset import MicroDopplerDataset
 
 
-def train_classifier(model, train_loader, criterion, optimizer, device, epochs=100, scheduler=None):
-    """训练分类器 - 基于训练loss早停，避免测试集泄露"""
+def train_classifier(model, train_loader, criterion, optimizer, device, epochs=15, scheduler=None):
+    """训练分类器 - 固定epoch数，与文献保持一致"""
     
     print(f"训练数据信息：{len(train_loader.dataset)} 张图像")
     
@@ -30,11 +30,7 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
         print(f"图像数据类型: {images.dtype}, 值域: [{images.min():.3f}, {images.max():.3f}]")
         break
     
-    # 早停参数
-    best_train_loss = float('inf')
-    best_model_state = None  # 保存最佳模型状态
-    patience_counter = 0
-    early_stop_patience = 3  # 连续3个epoch训练loss不下降则停止
+    print(f"开始训练 {epochs} epochs（与文献一致）")
     
     for epoch in range(epochs):
         # 训练阶段
@@ -68,31 +64,11 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
         
         print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Train Acc = {train_acc:.2f}%")
         
-        # 早停和学习率调度
-        if avg_train_loss < best_train_loss:
-            best_train_loss = avg_train_loss
-            best_model_state = model.state_dict().copy()  # 保存最佳模型
-            patience_counter = 0
-            print(f"  → 训练loss改善: {best_train_loss:.4f} (已保存模型)")
-        else:
-            patience_counter += 1
-            print(f"  → 训练loss未改善 ({patience_counter}/{early_stop_patience})")
-        
-        # 早停检查
-        if patience_counter >= early_stop_patience:
-            print(f"\n训练loss连续 {early_stop_patience} epochs未改善，提前停止训练")
-            print(f"最终训练loss: {best_train_loss:.4f}")
-            # 恢复到最佳模型状态
-            if best_model_state is not None:
-                model.load_state_dict(best_model_state)
-                print("已恢复到最佳训练loss对应的模型状态")
-            break
-            
         # 学习率调度（基于训练loss）
         if scheduler:
             scheduler.step(avg_train_loss)
     
-    print(f"训练完成，共进行 {epoch+1} epochs")
+    print(f"训练完成，共进行 {epochs} epochs（与文献一致）")
 
 
 def extract_features(model, data_loader, device, max_samples=1000):
@@ -378,7 +354,7 @@ def main():
     parser.add_argument('--synthetic_folder', type=str, default=None,
                         help='合成数据文件夹（可选，用于增强实验）')
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=15)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
