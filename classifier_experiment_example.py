@@ -33,7 +33,7 @@ def train_classifier(model, train_loader, criterion, optimizer, device, epochs=1
     # 早停参数
     best_train_loss = float('inf')
     patience_counter = 0
-    early_stop_patience = 5  # 连续5个epoch训练loss不下降则停止
+    early_stop_patience = 3  # 连续3个epoch训练loss不下降则停止
     
     for epoch in range(epochs):
         # 训练阶段
@@ -128,7 +128,7 @@ def visualize_tsne(features, labels, save_path='tsne_visualization.png'):
     print(f"开始t-SNE降维... 特征维度: {features.shape}")
     
     # t-SNE降维
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
     features_2d = tsne.fit_transform(features)
     
     # 可视化
