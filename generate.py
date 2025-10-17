@@ -308,7 +308,6 @@ def main():
     # 总是保存独立图像文件
     print("Saving individual images...")
     sample_counts = {}  # 跟踪每个用户的样本计数
-    to_pil = transforms.ToPILImage()
     
     for img, user_id in zip(all_generated, all_user_ids):
         # 为每个用户维护独立的样本计数
@@ -317,16 +316,15 @@ def main():
         
         save_path = output_dir / f'user_{user_id:02d}_sample_{sample_counts[user_id]:03d}.png'
         
-        # 确保img是 [3, 256, 256] 格式（单个图像，无batch维度）
-        if img.dim() == 4:  # [1, 3, 256, 256] -> [3, 256, 256]
-            img = img.squeeze(0)
+        # 使用和训练时相同的方法保存，但只传入单个图像
+        # 确保img有batch维度 [1, 3, 256, 256]
+        if img.dim() == 3:  # [3, 256, 256] -> [1, 3, 256, 256]
+            single_img = img.unsqueeze(0)
+        else:
+            single_img = img
         
-        # 确保值在[0,1]范围内
-        img = torch.clamp(img, 0, 1)
-        
-        # 转换为PIL图像并保存
-        pil_img = to_pil(img)
-        pil_img.save(save_path)
+        # 使用和训练时完全相同的保存方法
+        utils.save_image(single_img, str(save_path))
         sample_counts[user_id] += 1
     
     print(f"✓ Saved {len(all_generated)} individual images to {output_dir}")
