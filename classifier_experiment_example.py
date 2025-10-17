@@ -414,7 +414,7 @@ def main():
     parser.add_argument('--synthetic_folder', type=str, default=None,
                         help='合成数据文件夹（可选，用于增强实验）')
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=12)
+    parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--seed', type=int, default=42,
