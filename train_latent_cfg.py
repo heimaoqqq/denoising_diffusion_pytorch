@@ -84,7 +84,7 @@ class Config:
     dim_mults = (1, 2, 4, 4)  # 4层结构：避免最后一层过大
     attn_dim_head = 32  # 注意力头维度：保持适中
     attn_heads = 8  # 增加注意力头数：更好捕捉用户间微妙差异
-    cond_drop_prob = 0.1  # CFG条件丢弃：降低以确保充分学习微小的用户差异
+    cond_drop_prob = 0.1  # CFG条件丢弃：降低以适应小数据集+微小差异（0.25太高）
     
     # === 扩散配置 ===
     timesteps = 1000
@@ -99,7 +99,7 @@ class Config:
     # === 训练配置（针对RTX 5880 48GB + 小数据集优化）===
     train_batch_size = 12  # batch size：模型44M参数，48GB显存绰绰有余
     gradient_accumulate_every = 3  # 梯度累积：有效batch=36，保持训练稳定性
-    train_lr = 1e-4  # 学习率：标准值，与Kaggle保持一致
+    train_lr = 8e-5  # 学习率：与Kaggle保持一致
     train_num_steps = 120000  # 训练步数：约2791 epochs，60个checkpoint供选择
     
     # === 优化配置（防止过拟合 + 增加多样性）===
