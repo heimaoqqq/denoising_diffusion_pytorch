@@ -74,33 +74,32 @@ class Config:
     images_per_user_train = 50   # 每用户用于DDPM训练的图像数
     # 剩余100张作为测试集，仅用于分类器评估，对DDPM不可见
     image_size = 256
-    latent_size = 32  # ⚠️ VAE是8倍下采样（256/8=32），不是4倍！
+    latent_size = 32  # VAE是8倍下采样（256/8=32）
     latent_channels = 4
     
     # === 模型配置（针对微多普勒数据优化）===
     # 关键考虑：用户间差异极小，需要强大的条件编码和判别能力
-    # 实际参数量约85M，需要控制显存使用
-    dim = 96  # 基础维度：降低以控制参数量和显存
+    # 实际参数量约44M
+    dim = 96  # 基础维度：平衡模型容量与过拟合风险
     dim_mults = (1, 2, 4, 4)  # 4层结构：避免最后一层过大
     attn_dim_head = 32  # 注意力头维度：保持适中
     attn_heads = 8  # 增加注意力头数：更好捕捉用户间微妙差异
-    cond_drop_prob = 0.25  # CFG条件丢弃：增加无条件训练，增强泛化
+    cond_drop_prob = 0.1  # CFG条件丢弃：降低以确保充分学习微小的用户差异
     
     # === 扩散配置 ===
     timesteps = 1000
     sampling_timesteps = 100  # DDIM采样步数（100步足够，质量好且快）
     objective = 'pred_v'  # v-prediction
     beta_schedule = 'cosine'
-    
     # === 采样配置 ===
     # 用户间差异小 → 需要适中的CFG强度来强化微弱的条件信号
     cond_scale = 3.5  # CFG强度：3.5在保持多样性的同时强化条件遵循
     rescaled_phi = 0.7  # CFG++ rescaling：标准值
     
-    # === 训练配置（针对P100 16GB + 小数据集优化）===
-    train_batch_size = 12  # 降低batch size：模型44M参数，需要控制显存
+    # === 训练配置（针对RTX 5880 48GB + 小数据集优化）===
+    train_batch_size = 12  # batch size：模型44M参数，48GB显存绰绰有余
     gradient_accumulate_every = 3  # 梯度累积：有效batch=36，保持训练稳定性
-    train_lr = 8e-5  # 学习率：降低学习率防止过拟合
+    train_lr = 1e-4  # 学习率：标准值，与Kaggle保持一致
     train_num_steps = 120000  # 训练步数：约2791 epochs，60个checkpoint供选择
     
     # === 优化配置（防止过拟合 + 增加多样性）===
@@ -127,7 +126,7 @@ class Config:
     
     # === 其他 ===
     amp = True  # 混合精度
-    num_workers = 4
+    num_workers = 0  # Windows上设为0避免多进程问题，数据已缓存所以影响不大
     seed = 42
     
     def print_config_summary(self):
@@ -245,7 +244,7 @@ class LatentDataset(Dataset):
         cache_path = self.latents_cache_folder / cache_filename
         
         if cache_path.exists():
-            latent = torch.load(cache_path, map_location='cpu')
+            latent = torch.load(cache_path, map_location='cpu', weights_only=True)
         else:
             # 从原始图像编码
             img = Image.open(img_path).convert('RGB')
