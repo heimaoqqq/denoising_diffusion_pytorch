@@ -64,7 +64,7 @@ class Config:
     
     # === 路径配置 ===
     vae_path = '/kaggle/input/kl-vae/kl_vae_best.pt'
-    data_path = '/kaggle/input/organized-gait-dataset/Normal_line'
+    data_path = '/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_line'
     results_folder = './results'
     latents_cache_folder = './latents_cache'  # 预处理缓存
     
