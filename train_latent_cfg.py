@@ -64,7 +64,7 @@ class Config:
     
     # === 路径配置 ===
     vae_path = '/kaggle/input/kl-vae/kl_vae_best.pt'
-    data_path = '/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_line'
+    data_path = '/kaggle/input/organized-gait-dataset/Normal_line'
     results_folder = './results'
     latents_cache_folder = './latents_cache'  # 预处理缓存
     
@@ -79,11 +79,11 @@ class Config:
     
     # === 模型配置（针对微多普勒数据优化）===
     # 关键考虑：用户间差异极小，需要强大的条件编码和判别能力
-    dim = 96  # 基础维度：平衡容量与过拟合（96维 × 31类 = 充足的条件表达空间）
-    dim_mults = (1, 2, 4, 4)  # 4层结构：增加网络深度，提升特征提取能力
-    attn_dim_head = 32  # 注意力头维度
+    dim = 112  # 基础维度：平衡模型容量与过拟合风险
+    dim_mults = (1, 2, 4, 6)  # 4层结构：渐进增长，避免最后一层过大
+    attn_dim_head = 32  # 注意力头维度：保持适中
     attn_heads = 8  # 增加注意力头数：更好捕捉用户间微妙差异
-    cond_drop_prob = 0.2  # CFG条件丢弃：平衡条件学习与无条件生成（0.2 = 80%条件训练）
+    cond_drop_prob = 0.25  # CFG条件丢弃：增加无条件训练，增强泛化
     
     # === 扩散配置 ===
     timesteps = 1000
@@ -97,16 +97,17 @@ class Config:
     rescaled_phi = 0.7  # CFG++ rescaling：标准值
     
     # === 训练配置（针对P100 16GB + 小数据集优化）===
-    train_batch_size = 12  # 降低batch size：模型更大，需要更多显存
-    gradient_accumulate_every = 2  # 梯度累积：有效batch=24，稳定训练
-    train_lr = 8e-5  # 降低学习率：防止过拟合，更稳定的收敛
-    train_num_steps = 200000  # 增加训练步数：更大模型需要更多训练
+    train_batch_size = 16  # 充分利用显存：更大batch提升训练稳定性
+    gradient_accumulate_every = 2  # 梯度累积：有效batch=32，更稳定的梯度估计
+    train_lr = 8e-5  # 学习率：降低学习率防止过拟合
+    train_num_steps = 200000  # 训练步数：适中的训练量，避免过度训练
     
     # === 优化配置（防止过拟合 + 增加多样性）===
-    ema_decay = 0.9995  # EMA平滑：标准值，平衡稳定性与多样性
+    ema_decay = 0.999  # EMA平滑：降低平滑系数，增加多样性
     ema_update_every = 10  # EMA更新频率
     max_grad_norm = 1.0  # 梯度裁剪：防止梯度爆炸
     adam_betas = (0.9, 0.99)  # Adam优化器参数
+    weight_decay = 1e-4  # 权重衰减：L2正则化，防止过拟合
     
     # === Min-SNR优化（小数据集关键）===
     # Min-SNR帮助模型更好地学习所有时间步，避免过度关注简单样本
@@ -350,11 +351,12 @@ class LatentDiffusionTrainer:
         else:
             print("  → 潜在空间会被归一化到[-1,1]")
         
-        # 创建优化器
+        # 创建优化器（添加weight decay防止过拟合）
         self.opt = torch.optim.Adam(
             self.diffusion.parameters(),
             lr=config.train_lr,
-            betas=config.adam_betas
+            betas=config.adam_betas,
+            weight_decay=config.weight_decay
         )
         
         # 使用Accelerator准备
