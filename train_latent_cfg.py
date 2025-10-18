@@ -4,7 +4,19 @@ Latent Diffusion Training with Classifier-Free Guidance
 微多普勒时频图像生成 - 基于预训练VAE的潜在扩散模型
 
 数据流：
-  JPG图像(256×256×3) → VAE编码 → 潜在表示(64×64×4) → DDPM训练
+  JPG图像(256×256×3) → VAE编码 → 潜在表示(32×32×4) → DDPM训练
+
+数据特点与挑战：
+  ✓ 数据规模：31用户 × 50训练样本 = 1550张（小数据集）
+  ✓ 用户内变异：极大（步态周期、角度、状态差异显著）
+  ✓ 用户间差异：极小（肉眼难以区分，需要强判别能力）
+  ✗ 传统数据增强效果差
+  
+关键设计决策：
+  1. 更大的模型容量（dim=96, 4层）→ 捕捉微妙差异
+  2. 更强的条件编码（96维 × 31类）→ 有效表达用户特征
+  3. 平衡的CFG设置（drop=0.2, scale=3.5）→ 避免模式崩塌
+  4. 稳定的训练策略（低lr, 梯度累积）→ 防止过拟合
 
 Kaggle路径：
   VAE: /kaggle/input/kl-vae-best-pt/kl_vae_best.pt
@@ -52,7 +64,7 @@ class Config:
     
     # === 路径配置 ===
     vae_path = '/kaggle/input/kl-vae/kl_vae_best.pt'
-    data_path = '/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_line'
+    data_path = '/kaggle/input/organized-gait-dataset/Normal_line'
     results_folder = './results'
     latents_cache_folder = './latents_cache'  # 预处理缓存
     
@@ -65,12 +77,13 @@ class Config:
     latent_size = 32  # ⚠️ VAE是8倍下采样（256/8=32），不是4倍！
     latent_channels = 4
     
-    # === 模型配置（针对小数据集优化）===
-    dim = 48  # 基础维度，适配1550张数据
-    dim_mults = (1, 2, 4)  # 3层结构
-    attn_dim_head = 32
-    attn_heads = 4
-    cond_drop_prob = 0.3  # CFG条件丢弃概率（增加无条件训练，防止模式崩塌）
+    # === 模型配置（针对微多普勒数据优化）===
+    # 关键考虑：用户间差异极小，需要强大的条件编码和判别能力
+    dim = 96  # 基础维度：平衡容量与过拟合（96维 × 31类 = 充足的条件表达空间）
+    dim_mults = (1, 2, 4, 4)  # 4层结构：增加网络深度，提升特征提取能力
+    attn_dim_head = 32  # 注意力头维度
+    attn_heads = 8  # 增加注意力头数：更好捕捉用户间微妙差异
+    cond_drop_prob = 0.2  # CFG条件丢弃：平衡条件学习与无条件生成（0.2 = 80%条件训练）
     
     # === 扩散配置 ===
     timesteps = 1000
@@ -79,24 +92,26 @@ class Config:
     beta_schedule = 'cosine'
     
     # === 采样配置 ===
-    cond_scale = 2.5  # CFG强度（用户间差异极小，使用温和指导避免过拟合）
-    rescaled_phi = 0.7  # CFG++ rescaling（默认0.7）
+    # 用户间差异小 → 需要适中的CFG强度来强化微弱的条件信号
+    cond_scale = 3.5  # CFG强度：3.5在保持多样性的同时强化条件遵循
+    rescaled_phi = 0.7  # CFG++ rescaling：标准值
     
-    # === 训练配置（针对P100 16GB优化）===
-    train_batch_size = 16  # 1GB显存很充裕，可以提高
-    gradient_accumulate_every = 1  # 取消梯度累积，提升速度
-    train_lr = 1e-4  # 保持不变（有效batch=16不变）
-    train_num_steps = 150000  # ~2小时（比之前快2倍）
+    # === 训练配置（针对P100 16GB + 小数据集优化）===
+    train_batch_size = 12  # 降低batch size：模型更大，需要更多显存
+    gradient_accumulate_every = 2  # 梯度累积：有效batch=24，稳定训练
+    train_lr = 8e-5  # 降低学习率：防止过拟合，更稳定的收敛
+    train_num_steps = 200000  # 增加训练步数：更大模型需要更多训练
     
-    # === 优化配置（防止过拟合）===
-    ema_decay = 0.995  # 降低EMA平滑，增加多样性
-    ema_update_every = 10
-    max_grad_norm = 1.0  # 梯度裁剪
-    adam_betas = (0.9, 0.99)
+    # === 优化配置（防止过拟合 + 增加多样性）===
+    ema_decay = 0.9995  # EMA平滑：标准值，平衡稳定性与多样性
+    ema_update_every = 10  # EMA更新频率
+    max_grad_norm = 1.0  # 梯度裁剪：防止梯度爆炸
+    adam_betas = (0.9, 0.99)  # Adam优化器参数
     
     # === Min-SNR优化（小数据集关键）===
+    # Min-SNR帮助模型更好地学习所有时间步，避免过度关注简单样本
     min_snr_loss_weight = True
-    min_snr_gamma = 5
+    min_snr_gamma = 5  # gamma=5适合小数据集
     
     # === 归一化配置 ===
     # ⚠️ 重要：运行 test_vae_range.py 确定此参数！
@@ -112,6 +127,33 @@ class Config:
     amp = True  # 混合精度
     num_workers = 4
     seed = 42
+    
+    def print_config_summary(self):
+        """打印配置摘要"""
+        print("\n" + "="*60)
+        print("训练配置摘要")
+        print("="*60)
+        
+        print(f"\n数据: {self.num_users}用户 × {self.images_per_user_train}张 = {self.num_users * self.images_per_user_train}张")
+        
+        print(f"\n模型: dim={self.dim}, 层数={len(self.dim_mults)}, 注意力={self.attn_heads}头")
+        print(f"      参数量 ~{self._estimate_params():.1f}M")
+        
+        print(f"\nCFG: drop={self.cond_drop_prob}, scale={self.cond_scale}")
+        
+        print(f"\n训练: batch={self.train_batch_size}×{self.gradient_accumulate_every}, lr={self.train_lr}, steps={self.train_num_steps:,}")
+        
+        print("="*60 + "\n")
+    
+    def _estimate_params(self):
+        """估计模型参数量（百万）"""
+        # 粗略估计：基于UNet结构
+        total = 0
+        for mult in self.dim_mults:
+            total += (self.dim * mult) ** 2 * 2  # 每层的卷积参数
+        total += self.dim * 4 * self.dim  # 时间嵌入
+        total += self.dim * 4 * self.dim  # 类别嵌入
+        return total / 1e6
 
 
 # ============================================================
@@ -208,6 +250,9 @@ class LatentDiffusionTrainer:
     
     def __init__(self, config):
         self.config = config
+        
+        # 打印配置摘要
+        config.print_config_summary()
         
         # 初始化Accelerator
         self.accelerator = Accelerator(
