@@ -64,7 +64,7 @@ class Config:
     
     # === 路径配置 ===
     vae_path = '/kaggle/input/kl-vae/kl_vae_best.pt'
-    data_path = '/kaggle/input/organized-gait-dataset/kaggle/working/organized_gait_dataset/Normal_line'
+    data_path = '/kaggle/input/organized-gait-dataset/Normal_line'
     results_folder = './results'
     latents_cache_folder = './latents_cache'  # 预处理缓存
     
@@ -79,8 +79,9 @@ class Config:
     
     # === 模型配置（针对微多普勒数据优化）===
     # 关键考虑：用户间差异极小，需要强大的条件编码和判别能力
-    dim = 112  # 基础维度：平衡模型容量与过拟合风险
-    dim_mults = (1, 2, 4, 6)  # 4层结构：渐进增长，避免最后一层过大
+    # 实际参数量约85M，需要控制显存使用
+    dim = 96  # 基础维度：降低以控制参数量和显存
+    dim_mults = (1, 2, 4, 4)  # 4层结构：避免最后一层过大
     attn_dim_head = 32  # 注意力头维度：保持适中
     attn_heads = 8  # 增加注意力头数：更好捕捉用户间微妙差异
     cond_drop_prob = 0.25  # CFG条件丢弃：增加无条件训练，增强泛化
@@ -97,10 +98,10 @@ class Config:
     rescaled_phi = 0.7  # CFG++ rescaling：标准值
     
     # === 训练配置（针对P100 16GB + 小数据集优化）===
-    train_batch_size = 16  # 充分利用显存：更大batch提升训练稳定性
-    gradient_accumulate_every = 2  # 梯度累积：有效batch=32，更稳定的梯度估计
+    train_batch_size = 12  # 降低batch size：模型44M参数，需要控制显存
+    gradient_accumulate_every = 3  # 梯度累积：有效batch=36，保持训练稳定性
     train_lr = 8e-5  # 学习率：降低学习率防止过拟合
-    train_num_steps = 200000  # 训练步数：适中的训练量，避免过度训练
+    train_num_steps = 120000  # 训练步数：约2791 epochs，60个checkpoint供选择
     
     # === 优化配置（防止过拟合 + 增加多样性）===
     ema_decay = 0.999  # EMA平滑：降低平滑系数，增加多样性
@@ -138,7 +139,7 @@ class Config:
         print(f"\n数据: {self.num_users}用户 × {self.images_per_user_train}张 = {self.num_users * self.images_per_user_train}张")
         
         print(f"\n模型: dim={self.dim}, 层数={len(self.dim_mults)}, 注意力={self.attn_heads}头")
-        print(f"      参数量 ~{self._estimate_params():.1f}M")
+        print(f"      估算参数量 ~{self._estimate_params():.1f}M（实际以训练时显示为准）")
         
         print(f"\nCFG: drop={self.cond_drop_prob}, scale={self.cond_scale}")
         
@@ -148,12 +149,31 @@ class Config:
     
     def _estimate_params(self):
         """估计模型参数量（百万）"""
-        # 粗略估计：基于UNet结构
+        # 更准确的UNet参数估计
         total = 0
-        for mult in self.dim_mults:
-            total += (self.dim * mult) ** 2 * 2  # 每层的卷积参数
-        total += self.dim * 4 * self.dim  # 时间嵌入
-        total += self.dim * 4 * self.dim  # 类别嵌入
+        
+        # 初始卷积
+        total += self.dim * self.latent_channels * 7 * 7
+        
+        # Encoder/Decoder层（每层2个ResBlock + 注意力）
+        dims = [self.dim * m for m in self.dim_mults]
+        for i in range(len(dims)):
+            d = dims[i]
+            # ResBlock参数（2个卷积 + 时间/类别嵌入）
+            total += d * d * 3 * 3 * 4  # 4个ResBlock
+            # 注意力参数
+            total += d * d * 4  # QKV + output projection
+        
+        # 时间嵌入MLP
+        time_dim = self.dim * 4
+        total += self.dim * time_dim + time_dim * time_dim
+        
+        # 类别嵌入MLP
+        total += self.dim * time_dim + time_dim * time_dim
+        
+        # 中间层
+        total += dims[-1] * dims[-1] * 3 * 3 * 2
+        
         return total / 1e6
 
 
@@ -267,6 +287,9 @@ class LatentDiffusionTrainer:
         
         # 加载VAE
         print("Loading VAE...")
+        print(f"  VAE模块路径: {KL_VAE.__module__}")
+        import vae.kl_vae
+        print(f"  VAE文件路径: {vae.kl_vae.__file__}")
         
         # 加载checkpoint
         checkpoint = torch.load(config.vae_path, map_location='cpu')
