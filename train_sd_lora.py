@@ -103,12 +103,27 @@ def train_sd_lora(
     output_path.mkdir(parents=True, exist_ok=True)
     
     # 构建训练命令
+    # 方案1：尝试使用本地diffusers（开发版）
     train_script = Path("./diffusers/examples/text_to_image/train_text_to_image_lora.py")
     
+    # 方案2：如果本地不存在或版本不兼容，使用系统安装的脚本
     if not train_script.exists():
-        print(f"错误: 训练脚本不存在: {train_script}")
-        print("请确保已克隆Diffusers库到 ./diffusers/")
-        sys.exit(1)
+        # 查找系统安装的训练脚本
+        import diffusers
+        diffusers_path = Path(diffusers.__file__).parent
+        train_script = diffusers_path / "examples" / "text_to_image" / "train_text_to_image_lora.py"
+        
+        if not train_script.exists():
+            print(f"错误: 训练脚本不存在")
+            print(f"尝试的路径:")
+            print(f"  1. ./diffusers/examples/text_to_image/train_text_to_image_lora.py")
+            print(f"  2. {train_script}")
+            print()
+            print("解决方案:")
+            print("  pip install git+https://github.com/huggingface/diffusers.git")
+            sys.exit(1)
+        else:
+            print(f"使用系统安装的训练脚本: {train_script}")
     
     # 基础命令
     cmd = [
