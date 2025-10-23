@@ -297,10 +297,58 @@ def train_sd_lora(
                     save_path.mkdir(exist_ok=True)
                     unet.save_pretrained(save_path)
         
-        # 每个epoch结束后的验证
-        if (epoch + 1) % validation_epochs == 0:
+        # 每个epoch结束后的验证（每轮都验证）
+        if accelerator.is_main_process:
             print(f"\n验证 Epoch {epoch+1}...")
-            # 这里可以添加验证逻辑
+            
+            # 生成验证图像
+            unet.eval()
+            validation_dir = output_path / "validation_images"
+            validation_dir.mkdir(exist_ok=True)
+            
+            # 创建pipeline用于生成（使用DPM-Solver++调度器）
+            from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+            
+            # 配置DPM-Solver++调度器（20步即可，质量接近DDIM 100步）
+            # 可选：DDIMScheduler（100步，最高质量但慢）
+            dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained(model_name, subfolder="scheduler")
+            
+            pipeline = StableDiffusionPipeline.from_pretrained(
+                model_name,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=text_encoder,
+                vae=vae,
+                tokenizer=tokenizer,
+                scheduler=dpm_scheduler,
+                safety_checker=None,
+                torch_dtype=torch.float16 if mixed_precision == "fp16" else torch.float32,
+            )
+            pipeline = pipeline.to(accelerator.device)
+            
+            # 生成图像（DPM-Solver++ 20步，条件扩散）
+            for i in range(num_validation_images):
+                with torch.no_grad():
+                    # 生成512×512图像
+                    image_512 = pipeline(
+                        validation_prompt,  # 条件文本："user 0"
+                        num_inference_steps=20,  # DPM-Solver++ 20步（质量接近DDIM 100步）
+                        guidance_scale=7.5,  # CFG强度
+                    ).images[0]
+                    
+                    # Resize到256×256（与训练数据一致）
+                    image_256 = image_512.resize((256, 256), Image.LANCZOS)
+                    
+                    # 保存图像
+                    image_path = validation_dir / f"epoch_{epoch+1:03d}_sample_{i}.png"
+                    image_256.save(image_path)
+            
+            print(f"  ✓ 验证图像已保存到: {validation_dir} (256×256, DPM-Solver++ 20步)")
+            
+            # 清理pipeline释放显存
+            del pipeline
+            del dpm_scheduler
+            torch.cuda.empty_cache()
+            unet.train()
     
     # 8. 保存最终模型
     print("\n6. 保存最终模型...")
